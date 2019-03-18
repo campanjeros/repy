@@ -1,0 +1,35 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: repy_bla
+  namespace: default
+  labels:
+    name: repy
+    version: v0.0.2
+spec:
+  replicas: 1
+  revisionHistoryLimit: 7
+  selector:
+    matchLabels:
+      name: repy
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        name: repy
+    spec:
+      containers:
+        - name: repy
+          image: registry.dev.campanja.net/repy:0.0.2
+          args:
+            - /bin/bash
+            - -lc
+            - python3 -m non_working_program
+          resources:
+            limits:
+              cpu: 20000000m
+              memory: 400000000Gi
+            requests:
+              cpu: 50000000m
+              memory: 500000000Mi

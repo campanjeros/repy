@@ -1,0 +1,364 @@
+#!/usr/bin/env python
+
+"""
+===============================================================================
+
+Script to create a new release for Python/Erlang/Elixir
+projects.
+
+1. Detects current version from any supported file type and git
+   If different versions are found the latest/highest will be used
+
+2. Bump the found version according to the specified release type
+
+3. Update version in any found supported file
+
+4. Add and commit the changes to git (always uses the master branch)
+
+5. Create a new git tag with the updated version
+
+6. Push the branch and tag
+
+
+Requisites:
+ - Tags must be of the following format: Major.Minor.Patch, e.g. 1.0.3
+   A 'v' at the beginning of the tag/version is also supported
+ - You can only run the tool when being on the master branch and having no
+   uncommitted files.
+ - python 3 runtime, because reasons, I mean really, just update...
+ - If you have a brand new project you need to have set the version to
+   some base value in either git or any of the supported files, e.g. "0.0.0"
+
+Supported file types:
+ - Erlang: .app.src
+ - Elixir: .mix.esx
+ - Python: setup.py
+ - If the project includes a swagger config it also supports: .yaml or .yml
+ - If the project includes kubernetes configs it also supports: .yaml or .yml
+ - If no version is used in any file it will just use the version from the
+   git tag
+
+===============================================================================
+"""
+
+from __future__ import print_function
+import argparse
+from typing import Tuple, List, Dict, Optional
+import subprocess
+import os
+import re
+
+
+def perform_release(release_type: str,
+                    force_git_version: Optional[bool] = False,
+                    skip_checks: Optional[bool] = False,
+                    force_version: Optional[str] = None,
+                    dry_run: Optional[bool] = False) -> None:
+    print('Will generate a {} release'.format(release_type))
+
+    try:
+        current_version = detect_current_version(force_git_version)
+        print('current version detected: {}'.format(current_version))
+        if not verify_requisites(current_version, skip_checks):
+            return
+        if not force_version:
+            new_version = determine_new_version(current_version, release_type)
+        else:
+            new_version = force_version
+        print('new version that will be set: {}'.format(new_version))
+        set_new_version(new_version, dry_run)
+        print('Done with a {} release, new version: {}'.format(
+            release_type, new_version))
+    except Exception as e:
+        print(_format_execption('Encountered an error', e))
+
+
+def verify_requisites(current_version: str,
+                      skip_git_check: Optional[bool] = False) -> bool:
+    """ check current tag format
+        no uncommitted files
+        branch should be set to master
+    """
+    try:
+        _major, _minor, _patch = _parse_version_string(current_version)
+    except Exception as e:
+        print(_format_execption('bad current version format', e,
+                                'should be: x.y.z'))
+        return False
+    if skip_git_check:
+        return True
+    cmd_status, cmd_output = _exec_os_cmd(['git', 'status'])
+    if not cmd_status:
+        print('git status check failed')
+        return False
+    if 'nothing to commit, working tree clean' not in cmd_output:
+        print('git status check failed, you have uncommitted changes')
+        return False
+
+    cmd_status, cmd_output = _exec_os_cmd(['git', 'branch'])
+    if not cmd_status:
+        print('git branch check failed')
+        return False
+    if 'master' != cmd_output.replace('*', '').strip():
+        print('git branch check failed, you need to be on the master branch')
+        return False
+    return True
+
+
+def detect_current_version(use_git_version: Optional[bool] = False) -> str:
+    found_versions = []
+    if not use_git_version:
+        found_versions.extend(_get_versions_from_files())
+    found_versions.append(_get_version_from_git())
+
+    version_to_use = _get_latest_version(found_versions)
+    return _generate_version_string(*_parse_version_string(version_to_use))
+
+
+def determine_new_version(current_version: str, release_type: str) -> str:
+    major, minor, patch = _parse_version_string(current_version)
+    if release_type == 'major':
+        return _generate_version_string(major + 1, 0, 0)
+    elif release_type == 'minor':
+        return _generate_version_string(major, minor + 1, 0)
+    elif release_type == 'patch':
+        return _generate_version_string(major, minor, patch + 1)
+    else:
+        raise Exception('bad release type: {}'.format(release_type))
+
+
+def set_new_version(version: str, dry_run: Optional[bool] = False) -> None:
+    modified_files = _update_version_in_files(version)
+    if not dry_run:
+        _add_and_commit_version_changes(version, modified_files)
+        _create_git_tag(version)
+        _push_git_code()
+        _push_git_tag()
+    else:
+        print("don't add anything to git due to dry run")
+
+
+def _get_latest_version(versions: List[str]) -> str:
+
+    def _latest_version(version1: str, version2: str) -> str:
+        if not version1:
+            return version2
+        if not version2:
+            return version1
+        ver1_major, ver1_minor, ver1_patch = _parse_version_string(version1)
+        ver2_major, ver2_minor, ver2_patch = _parse_version_string(version2)
+        for ver1, ver2 in zip(_parse_version_string(version1),
+                              _parse_version_string(version2)):
+            if ver2 > ver1:
+                return version2
+            elif ver1 > ver2:
+                return version1
+        return version1
+
+    latest_version = ''
+    for ver in versions:
+        latest_version = _latest_version(latest_version, ver)
+
+    return latest_version
+
+
+def _get_version_from_file_content(content: str,
+                                   regexps: List[str]) -> List[str]:
+    versions = []
+    for regexp in regexps:
+        try:
+            matches = re.findall(regexp, content,
+                                 re.IGNORECASE + re.DOTALL + re.MULTILINE)
+            for match in matches:
+                versions.append(_generate_version_string(
+                    *_parse_version_string(match)))
+        except Exception:
+            pass
+    return versions
+
+
+def _filetype_to_version_regexp_map() -> Dict[str, List[str]]:
+    version_pattern = r'v?(\d+.\d+.\d+)'
+    return {
+        '.yaml': ['version: "?' + version_pattern + r'"?\n',
+                  'image: .*:' + version_pattern + r'"?\n'],
+        '.yml': ['version: "?' + version_pattern + r'"?\n',
+                 'image: .*:' + version_pattern + r'"?\n'],
+        'setup.py': [r'version[ =\\\n\'"]+' + version_pattern + r'[ \n\'"]+'],
+        '.app.src': ['{vsn, "' + version_pattern + '"}'],
+        'mix.exs': ['@version "' + version_pattern + '"',
+                    'version: "' + version_pattern + '"']
+    }
+
+
+def _get_regexp_for_file_type(fname: str) -> List[str]:
+    for fname_type, regexps in _filetype_to_version_regexp_map().items():
+        if fname_type in fname:
+            return regexps
+    raise Exception('Unsupported file type: {}'.format(fname))
+
+
+def _get_list_of_potential_files_with_version() -> List[str]:
+    fnames = []
+    for root, _dirs, fnames_in_dir in os.walk('.'):
+        for fname in fnames_in_dir:
+            if any(ftype in fname for ftype in
+                   _filetype_to_version_regexp_map().keys()):
+                fnames.append(os.path.join(root, fname))
+    return fnames
+
+
+def _get_versions_from_files() -> List[str]:
+    versions = []
+    for fname in _get_list_of_potential_files_with_version():
+        with open(fname, 'r') as f:
+            content = f.read()
+        versions.extend(_get_version_from_file_content(
+            content, _get_regexp_for_file_type(fname)))
+    return versions
+
+
+def _exec_os_cmd(cmd: List[str]) -> Tuple[bool, str]:
+    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    output, err = p.communicate()
+    if p.returncode == 0:
+        return True, str(output, 'utf-8').strip()
+    else:
+        return False, str(err, 'utf-8').strip()
+
+
+def _get_version_from_git() -> str:
+    cmd_status, cmd_output = _exec_os_cmd(['git', 'describe'])
+    if not cmd_status:
+        raise Exception('Failed to get the latest git tag, err: {}'.format(
+            cmd_output))
+    return _generate_version_string(*_parse_version_string(cmd_output))
+
+
+def _generate_version_string(major: int, minor: int, patch: int) -> str:
+    return '{}.{}.{}'.format(major, minor, patch)
+
+
+def _parse_version_string(version: str) -> Tuple[int, int, int]:
+    major, minor, patch = version.split('.')
+
+    def clean_version(version: str) -> int:
+        # basically remove everything after the z in for a git tag like:
+        # x.y.z-1-abc
+        if len(version) == 1:
+            return int(version)
+        clean_ver = ''
+        for c in version:
+            if c.isdigit():
+                clean_ver += c
+            else:
+                return int(clean_ver)
+        return int(clean_ver)
+
+    return clean_version(major), clean_version(minor), clean_version(patch)
+
+
+def _update_version_in_files(new_version: str) -> List[str]:
+    modified_files = []
+    for fname in _get_list_of_potential_files_with_version():
+        with open(fname, 'r+') as f:
+            content = f.read()
+            old_versions = _get_version_from_file_content(
+                content, _get_regexp_for_file_type(fname))
+            if not old_versions:
+                continue
+            new_content = content
+            for old_version in old_versions:
+                new_content = new_content.replace(old_version, new_version)
+            if new_content != content:
+                modified_files.append(fname)
+            f.seek(0)
+            f.truncate()
+            f.write(new_content)
+    return modified_files
+
+
+def _add_and_commit_version_changes(version: str, fnames: List[str]) -> None:
+    print('adding code changes to git')
+    git_add_cmd = ['git', 'add']
+    git_add_cmd.extend(fnames)
+    cmd_status, cmd_output = _exec_os_cmd(git_add_cmd)
+    if not cmd_status:
+        raise Exception('Failed to add changes to git, err: {}'.format(
+            cmd_output))
+    print('committing code changes')
+    cmd_status, cmd_output = _exec_os_cmd(['git', 'commit', '-m', version])
+    if not cmd_status:
+        raise Exception('Failed to commit changes to git, err: {}'.format(
+            cmd_output))
+
+
+def _push_git_code() -> None:
+    print('pushing code changes')
+    cmd_status, cmd_output = _exec_os_cmd(['git', 'push'])
+    if not cmd_status:
+        raise Exception('Failed to push changes to git, err: {}'.format(
+            cmd_output))
+
+
+def _create_git_tag(tag: str) -> None:
+    print('created git tag: {}'.format(tag))
+    cmd_status, cmd_output = _exec_os_cmd(['git', 'tag', '-a', tag, '-m', tag])
+    if not cmd_status:
+        raise Exception('Failed to create git tag, err: {}'.format(
+            cmd_output))
+
+
+def _push_git_tag():
+    print('pushing git tag')
+    cmd_status, cmd_output = _exec_os_cmd(['git', 'push', '--tags'])
+    if not cmd_status:
+        raise Exception('Failed to push the new tag to git, err: {}'.format(
+            cmd_output))
+
+
+def _format_execption(info_before: str, exception: Exception,
+                      info_after: str = '') -> str:
+    if info_after:
+        info_after = ', {}'.format(info_after)
+    return '{}: {}{}'.format(info_before, ', '.join(exception.args),
+                             info_after)
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=__doc__)
+    parser.add_argument('release_type', type=str,
+                        help='Which release you want, Major, Minor or Patch')
+    parser.add_argument('--force-git-version', '-g', action="store_true",
+                        help='force using the latest git tag as current tag')
+    parser.add_argument('--skip-checks', '-c', action="store_true",
+                        help=("don't check if the current git status is "
+                              "clean or whether the current branch is master"))
+    parser.add_argument('--force-version', '-f', type=str,
+                        help="set a specific version as the new release")
+    parser.add_argument('--dry-run', '-d', action="store_true",
+                        help="don't add or commit anything to git")
+    args = parser.parse_args()
+
+    args.release_type = args.release_type.lower()
+    if args.release_type not in ('major', 'minor', 'patch'):
+        raise Exception('Only Major, Minor and Patch supported as releases')
+    if args.force_version:
+        args.force_version = _generate_version_string(
+            *_parse_version_string(args.force_version))
+    if args.force_version and args.force_git_version:
+        raise Exception(('--force_version and --force_git_version are ' +
+                         'mutually exclusive'))
+    return args
+
+
+if __name__ == '__main__':
+    try:
+        args = parse_args()
+    except Exception as e:
+        print(_format_execption('Bad argument', e))
+    else:
+        perform_release(args.release_type, args.force_git_version,
+                        args.skip_checks, args.force_version, args.dry_run)
