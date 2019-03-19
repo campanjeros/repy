@@ -1,0 +1,19 @@
+{
+  "name": "bla",
+  "version": "0.0.3",
+  "description": "bla",
+  "author": "bla",
+  "license": "UNLICENSED",
+  "dependencies": {
+    "@babel/polyfill": "^7.0.0",
+  },
+  "devDependencies": {
+    "@babel/core": "^7.1.2",
+  },
+  "scripts": {
+    "start": "webpack-dev-server --mode development --backend stage",
+  },
+  "resolutions": {
+    "natives": "1.1.3"
+  }
+}

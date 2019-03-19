@@ -1,4 +1,4 @@
-# REPY - Tool for tagging a Python/Erlang/Elixir release
+# REPY - Tool for tagging a Python/Erlang/Elixir/JavaScript release
 
 ![REPY](https://images-na.ssl-images-amazon.com/images/I/61LEygTkpZL._SY355_.jpg)
 
@@ -19,5 +19,5 @@
 ## Installation
  - Manually `clone` the repo and then either add the entire repo to the `PATH` or use `ln` to create a link from some user/bin dir to the repy script
  - `pip install ./repy` in whatever python environment you like
- - whenever we have a python package repository you can `pip install` it from there
+ - Whenever we have a python package repository you can `pip install` it from there
  - You can also use skip pip and use some variant of `python setup.py install`

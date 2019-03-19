@@ -3,7 +3,7 @@
 """
 ===============================================================================
 
-Script to create a new release for Python/Erlang/Elixir
+Script to create a new release for Python/Erlang/Elixir/JavaScript
 projects.
 
 1. Detects current version from any supported file type and git
@@ -33,6 +33,7 @@ Supported file types:
  - Erlang: .app.src
  - Elixir: .mix.esx
  - Python: setup.py
+ - JavaScript: package.json
  - If the project includes a swagger config it also supports: .yaml or .yml
  - If the project includes kubernetes configs it also supports: .yaml or .yml
  - If no version is used in any file it will just use the version from the
@@ -180,6 +181,7 @@ def _get_version_from_file_content(content: str,
 def _filetype_to_version_regexp_map() -> Dict[str, List[str]]:
     version_pattern = r'v?(\d+.\d+.\d+)'
     return {
+        'package.json': ['"version": "' + version_pattern + r'",\n'],
         '.yaml': ['version: "?' + version_pattern + r'"?\n',
                   'image: .*:' + version_pattern + r'"?\n'],
         '.yml': ['version: "?' + version_pattern + r'"?\n',
