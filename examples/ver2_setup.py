@@ -4,7 +4,7 @@ from setuptools import setup, find_packages
 
 NAME = "tes_server"
 VERSION = \
-    "0.0.3"
+    "0.0.4"
 
 # To install the library, run the following
 #
