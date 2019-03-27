@@ -2,7 +2,7 @@
 swagger: "2.0"
 info:
   description: "This is just a test file"
-  version: "0.0.4"
+  version: "0.0.5"
   title: "none"
 basePath: "/v1"
 tags:

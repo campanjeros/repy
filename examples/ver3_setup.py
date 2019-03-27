@@ -15,7 +15,7 @@ REQUIRES = ["nothing"]
 
 setup(
     name=NAME,
-    version='0.0.4',
+    version='0.0.5',
     description="REPY",
     author_email="",
     url="",

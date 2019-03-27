@@ -1,6 +1,6 @@
 %% -*- mode: erlang; erlang-indent-level: 2 -*-
 {application, repy,
  [{description, "Tool for going full bla"},
-  {vsn, "0.0.4"},
+  {vsn, "0.0.5"},
   {applications, []}
 ]}.

@@ -5,7 +5,7 @@ metadata:
   namespace: default
   labels:
     name: repy
-    version: v0.0.4
+    version: v0.0.5
 spec:
   replicas: 1
   revisionHistoryLimit: 7
@@ -21,7 +21,7 @@ spec:
     spec:
       containers:
         - name: repy
-          image: registry.dev.campanja.net/repy:0.0.4
+          image: registry.dev.campanja.net/repy:0.0.5
           args:
             - /bin/bash
             - -lc
