@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 """
 ===============================================================================
@@ -23,15 +23,16 @@ projects.
 Requisites:
  - Tags must be of the following format: Major.Minor.Patch, e.g. 1.0.3
    A 'v' at the beginning of the tag/version is also supported
- - You can only run the tool when being on the master branch and having no
-   uncommitted files.
- - python 3 runtime, because reasons, I mean really, just update...
+ - You can only run the tool when being in the root of your repository/project
+   and on the master branch and having no uncommitted files.
+ - python 3.5+ runtime, because reasons, I mean really, just update...
  - If you have a brand new project you need to have set the version to
    some base value in either git or any of the supported files, e.g. "0.0.0"
+   This can e.g. be done using the --force-version argument in repy
 
 Supported file types:
  - Erlang: .app.src
- - Elixir: .mix.esx
+ - Elixir: mix.esx
  - Python: setup.py
  - JavaScript: package.json
  - If the project includes a swagger config it also supports: .yaml or .yml
@@ -42,7 +43,6 @@ Supported file types:
 ===============================================================================
 """
 
-from __future__ import print_function
 import argparse
 from typing import Tuple, List, Dict, Optional
 import subprocess
@@ -59,14 +59,14 @@ def perform_release(release_type: str,
 
     try:
         current_version = detect_current_version(force_git_version)
-        print('current version detected: {}'.format(current_version))
+        print('Current version detected: {}'.format(current_version))
         if not verify_requisites(current_version, skip_checks):
             return
         if not force_version:
             new_version = determine_new_version(current_version, release_type)
         else:
             new_version = force_version
-        print('new version that will be set: {}'.format(new_version))
+        print('New version that will be set: {}'.format(new_version))
         set_new_version(new_version, dry_run)
         print('Done with a {} release, new version: {}'.format(
             release_type, new_version))
@@ -281,14 +281,17 @@ def _update_version_in_files(new_version: str) -> List[str]:
 
 
 def _add_and_commit_version_changes(version: str, fnames: List[str]) -> None:
-    print('adding code changes to git')
+    if not fnames:
+        print('No files got updated version string, nothing to add/commit')
+        return
+    print('Adding code changes to git')
     git_add_cmd = ['git', 'add']
     git_add_cmd.extend(fnames)
     cmd_status, cmd_output = _exec_os_cmd(git_add_cmd)
     if not cmd_status:
         raise Exception('Failed to add changes to git, err: {}'.format(
             cmd_output))
-    print('committing code changes')
+    print('Committing code changes')
     cmd_status, cmd_output = _exec_os_cmd(['git', 'commit', '-m', version])
     if not cmd_status:
         raise Exception('Failed to commit changes to git, err: {}'.format(
@@ -296,7 +299,7 @@ def _add_and_commit_version_changes(version: str, fnames: List[str]) -> None:
 
 
 def _push_git_code() -> None:
-    print('pushing code changes')
+    print('Pushing code changes')
     cmd_status, cmd_output = _exec_os_cmd(['git', 'push'])
     if not cmd_status:
         raise Exception('Failed to push changes to git, err: {}'.format(
@@ -304,7 +307,7 @@ def _push_git_code() -> None:
 
 
 def _create_git_tag(tag: str) -> None:
-    print('created git tag: {}'.format(tag))
+    print('Created git tag: {}'.format(tag))
     cmd_status, cmd_output = _exec_os_cmd(['git', 'tag', '-a', tag, '-m', tag])
     if not cmd_status:
         raise Exception('Failed to create git tag, err: {}'.format(
@@ -312,7 +315,7 @@ def _create_git_tag(tag: str) -> None:
 
 
 def _push_git_tag():
-    print('pushing git tag')
+    print('Pushing git tag')
     cmd_status, cmd_output = _exec_os_cmd(['git', 'push', '--tags'])
     if not cmd_status:
         raise Exception('Failed to push the new tag to git, err: {}'.format(
