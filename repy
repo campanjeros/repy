@@ -40,6 +40,10 @@ Supported file types:
  - If no version is used in any file it will just use the version from the
    git tag
 
+Other:
+ - This tool doesn's use any external libs like a git lib in order to not have
+   any dependencies which needs to be installed
+
 ===============================================================================
 """
 
@@ -77,6 +81,7 @@ def perform_release(release_type: str,
 def verify_requisites(current_version: str,
                       skip_git_check: Optional[bool] = False) -> bool:
     """ check current tag format
+        check that the script is executed from the root of a git repository
         no uncommitted files
         branch should be set to master
     """
@@ -86,22 +91,29 @@ def verify_requisites(current_version: str,
         print(_format_execption('bad current version format', e,
                                 'should be: x.y.z'))
         return False
+
+    if not os.path.isdir('.git'):
+        print(('ERROR: Current directory {} is not the root of a git ' +
+               'repository').format(os.getcwd()))
+        return False
+
     if skip_git_check:
         return True
     cmd_status, cmd_output = _exec_os_cmd(['git', 'status'])
     if not cmd_status:
-        print('git status check failed')
+        print('ERROR: git status check failed')
         return False
     if 'nothing to commit, working tree clean' not in cmd_output:
-        print('git status check failed, you have uncommitted changes')
+        print('ERROR: git status check failed, you have uncommitted changes')
         return False
 
     cmd_status, cmd_output = _exec_os_cmd(['git', 'branch'])
     if not cmd_status:
-        print('git branch check failed')
+        print('ERROR: git branch check failed')
         return False
     if 'master' != cmd_output.replace('*', '').strip():
-        print('git branch check failed, you need to be on the master branch')
+        print(('ERROR: git branch check failed, you need to be on the ' +
+               'master branch'))
         return False
     return True
 
@@ -136,7 +148,7 @@ def set_new_version(version: str, dry_run: Optional[bool] = False) -> None:
         _push_git_code()
         _push_git_tag()
     else:
-        print("don't add anything to git due to dry run")
+        print("Don't add anything to git due to dry run")
 
 
 def _get_latest_version(versions: List[str]) -> str:
@@ -326,8 +338,8 @@ def _format_execption(info_before: str, exception: Exception,
                       info_after: str = '') -> str:
     if info_after:
         info_after = ', {}'.format(info_after)
-    return '{}: {}{}'.format(info_before, ', '.join(exception.args),
-                             info_after)
+    return 'ERROR: {}: {}{}'.format(info_before, ', '.join(exception.args),
+                                    info_after)
 
 
 def parse_args():
