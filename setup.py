@@ -3,7 +3,7 @@
 from setuptools import setup
 
 NAME = "repy"
-VERSION = "0.1.0"
+VERSION = "0.1.1"
 
 # To install the library, run the following
 #
