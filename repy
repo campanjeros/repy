@@ -33,7 +33,7 @@ Requisites:
 Supported file types:
  - Erlang: .app.src
  - Elixir: mix.esx
- - Python: setup.py
+ - Python: setup.py, common.py
  - JavaScript: package.json
  - If the project includes a swagger config it also supports: .yaml or .yml
  - If the project includes kubernetes configs it also supports: .yaml or .yml
@@ -199,6 +199,7 @@ def _filetype_to_version_regexp_map() -> Dict[str, List[str]]:
         '.yml': ['version: "?' + version_pattern + r'"?\n',
                  'image: .*:' + version_pattern + r'"?\n'],
         'setup.py': [r'version[ =\\\n\'"]+' + version_pattern + r'[ \n\'"]+'],
+        'common.py': [r'version[ =\\\n\'"]+' + version_pattern + r'[ \n\'"]+'],
         '.app.src': ['{vsn, "' + version_pattern + '"}'],
         'mix.exs': ['@version "' + version_pattern + '"',
                     'version: "' + version_pattern + '"']
