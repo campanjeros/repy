@@ -32,19 +32,26 @@ also create a git tag and push it to the remote repository.
 ### Patch release
 `repy Patch`
 
+### Force a specific version
+`repy 3.5.1`
+
 ### Help
 `repy -h`
+
+There are other parameters to skip various checks, get more detailed output,
+just perform a dry run, don't push any changes to remote etc.
 
 ## Installation
 There are a few different options on how to install the tool
  - Manually `clone` the repo and then either add the entire repo to the `PATH`
    or use `ln` to create a link from some user/bin dir to the repy script,
    e.g. `ln -s ~/YOUR_REPO_PATH/repy/repy ~/bin/repy`
- - `pip install ./repy` in whatever python environment you like
+ - `pip install -i https://pypi.dev.campanja.net/simple/ repy` in whatever
+   python environment you like
+ - `pip install ./REPY_DIR_NAME` in whatever python environment you like
    (after cloning the repo)
- - Whenever we have a python package repository you can `pip install` it
-   from there
- - You can also use skip pip and use some variant of `python setup.py install`
+ - You can also skip pip and use `python setup.py install` after cloning the
+   repo
 
 ### Update
 How to update the tool depends on how you installed it,

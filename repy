@@ -25,10 +25,10 @@ Requisites:
    A 'v' at the beginning of the tag/version is also supported
  - You can only run the tool when being in the root of your repository/project
    and on the master branch and having no uncommitted files.
- - python 3.5+ runtime, because reasons, I mean really, just update...
+ - python 3.6+ runtime, because reasons, I mean really, just update...
  - If you have a brand new project you need to have set the version to
    some base value in either git or any of the supported files, e.g. "0.0.0"
-   This can also be done using the --force-version argument in repy
+   This can also be done by using a specific version as release type in repy
 
 Supported file types:
  - Erlang: .app.src
@@ -55,21 +55,29 @@ from typing import Tuple, List, Dict, Optional
 import subprocess
 import os
 import re
+import json
 
 
 def perform_release(release_type: str,
-                    force_git_version: Optional[bool] = False,
+                    force_use_git_version: Optional[bool] = False,
                     skip_checks: Optional[bool] = False,
+                    skip_git_branch_check: Optional[bool] = False,
+                    skip_git_uncommitted_check: Optional[bool] = False,
+                    skip_git_untracked_check: Optional[bool] = False,
                     force_version: Optional[str] = None,
                     dry_run: Optional[bool] = False,
-                    local_only: Optional[bool] = False) -> None:
+                    local_only: Optional[bool] = False,
+                    verbose: bool = False) -> None:
     print('Will generate a {} release'.format(release_type))
 
     try:
         current_version = detect_current_version(
-            force_git_version, force_version)
+            force_use_git_version, force_version, verbose)
         print('Current version detected: {}'.format(current_version))
-        if not verify_requisites(current_version, skip_checks):
+        if not verify_requisites(current_version, skip_checks,
+                                 skip_git_branch_check,
+                                 skip_git_uncommitted_check,
+                                 skip_git_untracked_check):
             return
         if not force_version:
             new_version = determine_new_version(current_version, release_type)
@@ -83,11 +91,15 @@ def perform_release(release_type: str,
         print(_format_execption('Encountered an error', e))
 
 
-def verify_requisites(current_version: str,
-                      skip_git_check: Optional[bool] = False) -> bool:
+def verify_requisites(
+        current_version: str, skip_all_git_checks: Optional[bool] = False,
+        skip_git_branch_check: Optional[bool] = False,
+        skip_git_uncommitted_check: Optional[bool] = False,
+        skip_git_untracked_check: Optional[bool] = False) -> bool:
     """ check current tag format
         check that the script is executed from the root of a git repository
         no uncommitted files
+        no untracked files
         branch should be set to master
     """
     try:
@@ -102,14 +114,20 @@ def verify_requisites(current_version: str,
                'repository').format(os.getcwd()))
         return False
 
-    if skip_git_check:
+    if skip_all_git_checks:
         return True
     cmd_status, cmd_output = _exec_os_cmd(['git', 'status'])
     if not cmd_status:
         print('ERROR: git status check failed')
         return False
-    if 'nothing to commit, working tree clean' not in cmd_output:
+    if (('Changes not staged for commit' in cmd_output or
+         'Changes to be committed' in cmd_output) and
+            not skip_git_uncommitted_check):
         print('ERROR: git status check failed, you have uncommitted changes')
+        return False
+    if ('Untracked files' in cmd_output and
+            not skip_git_untracked_check):
+        print('ERROR: git status check failed, you have untracked files')
         return False
 
     cmd_status, cmd_output = _exec_os_cmd(['git', 'branch'])
@@ -117,26 +135,39 @@ def verify_requisites(current_version: str,
         print('ERROR: git branch check failed')
         return False
 
-    if not any([branch == '* master' for branch in cmd_output.split('\n')]):
+    is_on_master_branch = \
+        any([branch == '* master' for branch in cmd_output.split('\n')])
+    if (not is_on_master_branch and not skip_git_branch_check):
         print(('ERROR: git branch check failed, you need to be on the ' +
                'master branch'))
         return False
     return True
 
 
-def detect_current_version(force_git_version: Optional[bool] = False,
-                           force_version: Optional[str] = None) -> str:
-    found_versions = []
-    if not force_git_version:
-        found_versions.extend(_get_versions_from_files())
+def detect_current_version(force_use_git_version: Optional[bool] = False,
+                           force_version: Optional[str] = None,
+                           verbose: bool = False) -> str:
+    found_versions: List[str] = []
+    if not force_use_git_version:
+        found_file_versions = _get_versions_from_files()
+        if verbose:
+            versions_readable = json.dumps(
+                found_file_versions, sort_keys=True, indent=2)
+            print(f'Detected the following file versions: {versions_readable}')
+        for versions in found_file_versions.values():
+            found_versions.extend(versions)
     try:
-        found_versions.append(_get_version_from_git())
-    except Exception as e:
+        found_git_version = _get_version_from_git()
+        if verbose:
+            print(f'Detected the following git version: {found_git_version}')
+        found_versions.append(found_git_version)
+    except Exception:
         if not found_versions:
             if not force_version:
                 raise Exception(('Detected initial repository without any ' +
-                                 'version, use --force-version if you want ' +
-                                 'to set an initial release'))
+                                 'version, use a specific version instead ' +
+                                 'of the release type in order to set an ' +
+                                 'initial release'))
             else:
                 found_versions.append('0.0.0')
 
@@ -153,7 +184,7 @@ def determine_new_version(current_version: str, release_type: str) -> str:
     elif release_type == 'patch':
         return _generate_version_string(major, minor, patch + 1)
     else:
-        raise Exception('bad release type: {}'.format(release_type))
+        raise Exception('Bad release type: {}'.format(release_type))
 
 
 def set_new_version(version: str, dry_run: Optional[bool] = False,
@@ -195,8 +226,8 @@ def _get_latest_version(versions: List[str]) -> str:
     return latest_version
 
 
-def _get_version_from_file_content(content: str,
-                                   regexps: List[str]) -> List[str]:
+def _get_versions_from_file_content(content: str,
+                                    regexps: List[str]) -> List[str]:
     versions = []
     for regexp in regexps:
         try:
@@ -234,34 +265,25 @@ def _get_regexp_for_file_type(fname: str) -> List[str]:
 
 
 def _get_list_of_potential_files_with_version() -> List[str]:
-    fnames = []
+    fnames_with_version = []
+    project_fnames = _get_all_git_tracked_files()
 
-    # don't update the version in certain directories and git submodules
-    git_submodules = _get_git_submodules()
-    excluded_dirs = ['.git', 'build', '__pycache__']
-    excluded_dirs.extend(git_submodules)
-
-    for root, dirs, fnames_in_dir in os.walk('.'):
-        # don't touch any cloned repositories within our repository
-        if root != '.' and '.git' in dirs:
-            if root not in excluded_dirs:
-                excluded_dirs.append(root)
-        if any([excluded_dir in root for excluded_dir in excluded_dirs]):
-            continue
-        for fname in fnames_in_dir:
-            if any(fname.endswith(ftype) for ftype in
-                   _filetype_to_version_regexp_map().keys()):
-                fnames.append(os.path.join(root, fname))
-    return fnames
+    for fname in project_fnames:
+        if any(fname.endswith(ftype) for ftype in
+               _filetype_to_version_regexp_map().keys()):
+            fnames_with_version.append(fname)
+    return fnames_with_version
 
 
-def _get_versions_from_files() -> List[str]:
-    versions = []
+def _get_versions_from_files() -> Dict[str, List[str]]:
+    versions: Dict[str, List[str]] = {}
     for fname in _get_list_of_potential_files_with_version():
         with open(fname, 'r') as f:
             content = f.read()
-        versions.extend(_get_version_from_file_content(
-            content, _get_regexp_for_file_type(fname)))
+        current_file_versions = _get_versions_from_file_content(
+            content, _get_regexp_for_file_type(fname))
+        if current_file_versions:
+            versions[fname] = current_file_versions
     return versions
 
 
@@ -272,6 +294,19 @@ def _exec_os_cmd(cmd: List[str]) -> Tuple[bool, str]:
         return True, str(output, 'utf-8').strip()
     else:
         return False, str(err, 'utf-8').strip()
+
+
+def _get_all_git_tracked_files() -> List[str]:
+    cmd_status, cmd_output = _exec_os_cmd(['git', 'ls-tree', '-r', 'HEAD',
+                                           '--name-only'])
+    if not cmd_status:
+        raise Exception('Failed to get any git submodules, err: {}'.format(
+            cmd_output))
+
+    files = [file for file in cmd_output.split('\n')]
+    if '' in files:
+        files.remove('')
+    return files
 
 
 def _get_git_submodules() -> List[str]:
@@ -288,7 +323,8 @@ def _get_git_submodules() -> List[str]:
 
     submodule_names = [_extract_submodule_name(submodule) for
                        submodule in cmd_output.split('\n')]
-    submodule_names.remove('')
+    if '' in submodule_names:
+        submodule_names.remove('')
     return submodule_names
 
 
@@ -328,7 +364,7 @@ def _update_version_in_files(new_version: str) -> List[str]:
     for fname in _get_list_of_potential_files_with_version():
         with open(fname, 'r+') as f:
             content = f.read()
-            old_versions = _get_version_from_file_content(
+            old_versions = _get_versions_from_file_content(
                 content, _get_regexp_for_file_type(fname))
             if not old_versions:
                 continue
@@ -397,30 +433,48 @@ def parse_args():
     parser = argparse.ArgumentParser(
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__)
+
     parser.add_argument('release_type', type=str,
-                        help='Which release you want, Major, Minor or Patch')
-    parser.add_argument('--force-git-version', '-g', action="store_true",
+                        help=('Which release you want, Major, Minor, ' +
+                              'Patch or a specific forced version'))
+    parser.add_argument('--force-use-git-version', '-g', action="store_true",
                         help='force using the latest git tag as current tag')
     parser.add_argument('--skip-checks', '-c', action="store_true",
                         help=("don't check if the current git status is "
                               "clean or whether the current branch is master"))
-    parser.add_argument('--force-version', '-f', type=str,
-                        help="set a specific version as the new release")
+    parser.add_argument('--skip-branch-check', action="store_true",
+                        help=("don't check if the current git branchis "
+                              "master"))
+    parser.add_argument('--skip-untracked-check', action="store_true",
+                        help=("don't check if there are untracked files in "
+                              "the repository"))
+    parser.add_argument('--skip-uncommitted-check', action="store_true",
+                        help=("don't check if there are uncommitted changes "
+                              "in the repository"))
     parser.add_argument('--dry-run', '-d', action="store_true",
                         help="don't add or commit anything to git")
     parser.add_argument('--local-only', '-l', action="store_true",
                         help="don't git push anything to remote")
+    parser.add_argument('--verbose', '-v', action="store_true",
+                        help="printout more detailed information")
+
     args = parser.parse_args()
 
     args.release_type = args.release_type.lower()
+    vars(args)['force_version'] = None
     if args.release_type not in ('major', 'minor', 'patch'):
-        raise Exception('Only Major, Minor and Patch supported as releases')
-    if args.force_version:
-        args.force_version = _generate_version_string(
-            *_parse_version_string(args.force_version))
-    if args.force_version and args.force_git_version:
-        raise Exception(('--force_version and --force_git_version are ' +
-                         'mutually exclusive'))
+        try:
+            args.force_version = _generate_version_string(
+                *_parse_version_string(args.release_type))
+            args.release_type = 'forced'
+            if args.force_use_git_version:
+                raise Exception(
+                    ('A forced version and --force_use_git_version are ' +
+                     'mutually exclusive'))
+        except Exception:
+            raise Exception(('Only Major, Minor and Patch or a specific ' +
+                             'forced version (e.g. 1.2.3) supported as ' +
+                             'releases'))
     return args
 
 
@@ -430,6 +484,8 @@ if __name__ == '__main__':
     except Exception as e:
         print(_format_execption('Bad argument', e))
     else:
-        perform_release(args.release_type, args.force_git_version,
-                        args.skip_checks, args.force_version, args.dry_run,
-                        args.local_only)
+        perform_release(args.release_type, args.force_use_git_version,
+                        args.skip_checks, args.skip_branch_check,
+                        args.skip_uncommitted_check,
+                        args.skip_untracked_check,  args.force_version,
+                        args.dry_run, args.local_only, args.verbose)
