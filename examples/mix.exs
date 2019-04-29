@@ -4,7 +4,7 @@ defmodule Metad.Mixfile do
   def project do
     [
       app: :bla,
-      version: "0.2.0",
+      version: "0.3.0",
       elixir: "~> 1.8",
       build_embedded: true,
       start_permanent: true,
