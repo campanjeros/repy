@@ -43,11 +43,11 @@ just perform a dry run, don't push any changes to remote etc.
 
 ## Installation
 There are a few different options on how to install the tool
+ -`pip install repy`, the easiest way,
+   will install the tool in your current active python environment
  - Manually `clone` the repo and then either add the entire repo to the `PATH`
    or use `ln` to create a link from some user/bin dir to the repy script,
    e.g. `ln -s ~/YOUR_REPO_PATH/repy/repy ~/bin/repy`
- - `pip install -i https://pypi.dev.campanja.net/simple/ repy` in whatever
-   python environment you like
  - `pip install ./REPY_DIR_NAME` in whatever python environment you like
    (after cloning the repo)
  - You can also skip pip and use `python setup.py install` after cloning the
