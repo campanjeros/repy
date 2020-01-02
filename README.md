@@ -11,9 +11,9 @@ The tool will update any file in your project which contains this version and
 also create a git tag and push it to the remote repository.
 
 ### Examples
- - current version: 1.3.2. `repy patch` will generate the new version 1.3.3
- - current version: 1.3.2. `repy minor` will generate the new version 1.4.0
- - current version: 1.3.2. `repy major` will generate the new version 2.0.0
+ - current version: 1.3.2 `repy patch` will generate the new version 1.3.3
+ - current version: 1.3.2 `repy minor` will generate the new version 1.4.0
+ - current version: 1.3.2 `repy major` will generate the new version 2.0.0
 
 ### Requirements
  - The current branch needs to be `master`
@@ -43,7 +43,7 @@ just perform a dry run, don't push any changes to remote etc.
 
 ## Installation
 There are a few different options on how to install the tool
- -`pip install repy`, the easiest way,
+ - `pip install repy`, the easiest way,
    will install the tool in your current active python environment
  - Manually `clone` the repo and then either add the entire repo to the `PATH`
    or use `ln` to create a link from some user/bin dir to the repy script,
